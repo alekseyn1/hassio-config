@@ -1,0 +1,632 @@
+#set brightness to full, speed to half, intensity to half, primary color as blue, secondary as red, tertiary as white, set pallet to default, effect to strobe mega but keep it off
+
+#topic: wled/all/api
+
+    #- service: light.turn_on
+     # data_template:
+      #  entity_id: >
+       #   {%- for device in states.light if ( device.entity_id.startswith('light.wled')) -%}
+        #  {%- if loop.first %}{%- else %}, {% endif %}{{device.entity_id }}{%- if loop.last %}{% endif %}{%- endfor  %}
+
+
+wled_test:
+  alias: "LED alarm water leak"
+  sequence:
+    - service: scene.create
+      data_template:
+        scene_id: before_wled_test
+        snapshot_entities: 
+          - light.wled_living_room
+          - light.wled_big_room
+          - light.wled_small_room
+          - light.wled2
+          - light.wled3
+          - light.wled4
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: A=255&SX=200&IX=128&CL=H0000ff&C2=Hff0000&C3=Hffffff&FP=0&FX=25
+    - delay: '00:00:05'
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: A=100&SX=200&IX=128&CL=Hffff00&C2=0&C3=H0&FP=0&FX=00
+    #doing it twice as some WLED strings are 'slower' than others
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: A=100&SX=200&IX=128&CL=Hffff00&C2=0&C3=H0&FP=0&FX=00
+    - service: scene.turn_on
+      data:
+        entity_id: scene.before_wled_test
+        
+        
+light_alarm_test:
+  alias: 'wled lights alarm'
+  sequence:
+    - service: light.turn_on
+      data:
+        brightness: 255
+        entity_id: light.wled2
+        rgb_color:
+        - 255
+        - 0
+        - 0
+    - service: wled.effect
+      entity_id: light.wled2
+      data:
+        effect: 'Strobe Mega'
+        #effect: 'Police'
+        speed: 245
+    - delay: '00:00:08'
+    - service: light.turn_off
+      entity_id:  light.wled2
+      
+
+led_alarm_kids_room_test:
+  alias: 'wled lights alarm test'
+  sequence:
+    service: light.turn_on
+    target:
+      entity_id: light.wled2
+    data:
+      effect: 'Strobe Mega'
+
+
+
+email_1:
+  alias: 'send email to school 1'
+  sequence:
+    - condition: state
+      entity_id: input_boolean.email_school_enable_1
+      state: 'on'
+    - service: notify.email_1
+      data:
+        #sender_name: "{{ sender_name_1 }}"
+        target: "{{ to_text_1 }}"
+        title: "{{ subject_text_1 }}"
+        message: "Hello,\n\n{{ message_text_1 }}\n\nThanks,\n{{ sender_name_1 }}"
+
+email_2:
+  alias: 'send email to school 2'
+  sequence:
+    - condition: state
+      entity_id: input_boolean.email_school_enable_2
+      state: 'on'  
+    - service: notify.email_2
+      data:
+        #sender_name: "{{ sender_name_2 }}"
+        target: "{{ to_text_2 }}"
+        title: "{{ subject_text_2 }}"
+        message: "Hello,\n\n{{ message_text_2 }}\n\nThanks,\n{{ sender_name_2 }}"
+    
+
+
+####################################################
+#                                                  #
+#        LED lights                                #
+#                                                  #
+####################################################
+
+#Function to set the color of lights on WLEDs
+#https://tynick.com/blog/01-28-2020/controlling-wled-with-raspberry-pi-using-the-wled-api/
+#set brightness to full, speed to half, intensity to half, primary color as red, secondary as blue and tertiary as white and set pallet to default
+wled_set_alarm_colors:
+  sequence:
+    - service: rest_command.rest_cmd
+      data:
+        url: 'http://{{ wled_ip }}/win&A=255&SX=128&IX=128&CL=Hff0000&C2=H0000ff&C3=Hffffff&FP=0'
+
+wled_turn_on:
+  sequence:
+    - service: rest_command.rest_cmd
+      data:
+        url: 'http://{{ wled_ip }}/win&T=1'
+
+wled_turn_off:
+  sequence:
+    - service: rest_command.rest_cmd
+      data:
+        url: 'http://{{ wled_ip }}/win&T=0'
+
+wled_max_brightness:
+  sequence:
+    - service: rest_command.rest_cmd
+      data:
+        url: 'http://{{ wled_ip }}/win&A=255'     
+        
+####################################################
+#   Flash Lights if Water Leak Detected            #
+####################################################
+led_alarm_water_leak:
+  alias: "LED alarm water leak"
+  sequence:
+    - service: scene.create
+      data_template:
+        scene_id: before_wled_test
+        snapshot_entities: 
+          - light.wled_living_room
+          - light.wled_big_room
+          - light.wled_small_room
+          - light.wled2
+          - light.wled3
+          - light.wled4
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: A=255&SX=200&IX=128&CL=H0000ff&C2=Hff0000&C3=Hffffff&FP=0&FX=25
+    - delay: '00:00:05'
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: ""
+    - service: scene.turn_on
+      data:
+        entity_id: scene.before_wled_test
+
+led_alarm_water_leak_old:
+  alias: 'LED alarm water leak old'
+  sequence:
+    - service: scene.create
+      data:
+        scene_id: before_wled
+        snapshot_entities: light.wled_big_room, light.wled_living_room, light.wled_small_room
+    - service: light.turn_on
+      data:
+        brightness: 255
+        entity_id: light.wled_big_room, light.wled_living_room, light.wled_small_room
+          #data_template:
+            #entity_id: >
+              #{%- for device in states.light if ( device.entity_id.startswith('light.wled')) -%}
+              #{%- if loop.first %}{%- else %}, {% endif %}{{device.entity_id }}{%- if loop.last %}{% endif %}{%- endfor  %}
+        rgb_color:
+        - 255
+        - 0
+        - 0
+    - service: wled.effect
+      entity_id: light.wled_big_room, light.wled_living_room, light.wled_small_room
+      data:
+        effect: 'Strobe Mega'
+        #effect: 'Police'
+        speed: 245
+    - delay: '00:00:05'
+    - service: scene.turn_on
+      data:
+        entity_id: scene.before_wled
+        
+        
+call_kids:
+  alias: 'call kids to pay attention'
+  sequence:
+    - service: notify.alexa_media
+      data:
+        data:
+          #type: tts
+          type: announce
+        target: 
+          - media_player.dodo
+          - media_player.danya
+        message: 'Guys, your parents are calling you. Please go talk to them'
+    - service: script.led_alarm_kids_room
+    - service: input_boolean.turn_off
+      entity_id: input_boolean.kids_attention
+
+
+led_alarm_kids_room: #https://www.home-assistant.io/integrations/flux_led/
+  alias: 'LED alarm kids rooms'
+  sequence:
+    - service: scene.create
+      data:
+        scene_id: before_kids
+        snapshot_entities:
+          - light.wled_big_room
+          - light.wled_small_room
+    - service: light.turn_on
+      data:
+        brightness: 255
+        entity_id: 
+          - light.wled_big_room
+          - light.wled_small_room
+        rgb_color:
+        - 0
+        - 0
+        - 255
+    - service: light.turn_on
+      target: 
+        entity_id: 
+          - light.wled_big_room
+          - light.wled_small_room
+      data:
+        effect: 'Strobe Mega'
+        #effect: 'Police'
+        #speed: 245
+    - delay: '00:00:05'
+    - service: light.turn_on
+      target: 
+        entity_id: 
+          - light.wled_big_room
+          - light.wled_small_room
+      data:
+        effect: 'Solid'
+        #speed: 100
+    - service: scene.turn_on
+      data:
+        entity_id: scene.before_kids
+
+
+####################################################
+#   Ozone Generator Related                        #
+####################################################
+
+start_ozone_generator:
+  alias: 'Start Ozone Generation Sequence'
+  sequence:
+    - condition: or
+      conditions:
+        - condition: time
+          before: '02:59:00'
+        - condition: time
+          after: '06:10:00'
+    - service: script.notification
+      data_template:
+        message_text: "Ozone Generator started working. Please do not enter the garage until further notice (for around one hour)."
+
+
+
+vent_after_ozone_generator:
+  alias: 'Vent After Ozone Generator Sequence'
+  sequence:
+    - condition: state
+      entity_id: input_boolean.open_garage_after_ozone_generator_sequence
+      state: 'on'
+    - service: homeassistant.turn_on #open garage door.
+      entity_id: 
+        - switch.garage_door_button
+    - service: script.notification
+      data_template:
+        message_text: "Opening the garage door and tuning on all fans. Garage will close in 30 minutes as well as all fans will turn off automatically."
+    - delay: '00:30:00'
+    - service: homeassistant.turn_off #turn off all fans
+      entity_id: 
+        - switch.garage_extension_2
+        - switch.heavy_duty_extension
+          
+
+bedtime_kids:
+  alias: 'Kids bedtime'
+  sequence:
+    - service: script.led_alarm_kids_room
+    - service: media_player.volume_set
+      entity_id: 
+        - media_player.dodo
+        - media_player.danya
+      data:
+        volume_level: '0.9'
+    - delay: '00:00:02'
+    - service: notify.alexa_media
+      data:
+        data:
+          type: tts
+        target: 
+          - media_player.dodo
+          - media_player.danya
+        message: 'Guys, please note, your computers are shutting down in 5 minutes'
+    - delay: '00:03:00'
+    #=========================================
+    - service: script.led_alarm_kids_room
+    - service: notify.alexa_media
+      data:
+        data:
+          type: tts
+        target: 
+          - media_player.dodo
+          - media_player.danya
+        message: 'Attention, your computers are shutting down in 2 minutes'
+    - delay: '00:02:00'
+    #=========================================
+    - service: script.led_alarm_kids_room
+    - service: notify.alexa_media
+      data:
+        data:
+          type: tts
+        target: 
+          - media_player.dodo
+          - media_player.danya
+        message: 'Attention, your computers are shutting down in 1 minute'
+    - delay: '00:01:00'
+    #==========================================
+    - service: script.led_alarm_kids_room
+    - service: notify.alexa_media
+      data:
+        data:
+          type: tts
+        target: 
+          - media_player.dodo
+          - media_player.danya
+        message: 'Attention, your computers are shutting down now. 5, 4, 3, 2, 1. Good night'
+    - delay: '00:00:10'
+    - service: homeassistant.turn_off
+      entity_id: 
+        - switch.upstairs_big_room_light
+        - switch.upstairs_small_room_light
+        - switch.upstairs_small_room_extension
+    - service: light.turn_on
+      data:
+        entity_id: 
+          - light.led_room_big
+          - light.led_room_small
+        effect: cyan_fade
+        brightness: 90
+    - service: input_boolean.turn_off
+      entity_id: input_boolean.kids_bedtime
+
+####################################################
+#                                                  #
+# All lights and switches off  (with exceptions)   #
+#                                                  #
+####################################################
+lights_out:
+  alias: 'All lights and switches off'
+  sequence:
+    - service: light.turn_off
+      data_template:
+        entity_id: >
+          {% set exclude_light = [
+            'light.fake'
+          ] %}
+          {%- for device in states.light|rejectattr('entity_id','in',exclude_light) %}{%- if loop.first %}{%- else %}, {% endif %}{{device.entity_id }}{%- if loop.last %}{% endif %}{%- endfor  %}
+    - service: switch.turn_off
+      data_template:
+        entity_id: >
+          {%- for device in states.switch if not ( null 
+            or device.entity_id.startswith('switch.main_water_valve')
+            or device.entity_id.startswith('switch.master_bedroom_desk')
+            or device.entity_id.startswith('switch.laundry_closet')
+            or device.entity_id.startswith('switch.christmas_lights')
+            or device.entity_id.startswith('switch.front_door_outside_plug')
+            or device.entity_id.startswith('switch.ps4')
+            or device.entity_id.startswith('switch.smart_extension')
+            or device.entity_id.endswith('sync_send')
+            or device.entity_id.endswith('sync_receive')) -%}
+          {%- if loop.first %}{%- else %}, {% endif %}{{device.entity_id }}{%- if loop.last %}{% endif %}{%- endfor  %}
+
+####################################################
+#                                                  #
+# All lights and switches on  (with exceptions)   #
+#                                                  #
+####################################################
+lights_on:
+  alias: 'All lights in the house on'
+  sequence:
+    - service: light.turn_on
+      data_template:
+        entity_id: >
+          {% set exclude_light = [
+            'light.fake'
+          ] %}
+          {%- for device in states.light|rejectattr('entity_id','in',exclude_light) %}{%- if loop.first %}{%- else %}, {% endif %}{{device.entity_id }}{%- if loop.last %}{% endif %}{%- endfor  %}
+        brightness: >
+              255
+    - service: switch.turn_on
+      data_template:
+        entity_id: 
+          - switch.garage_stairs
+          - switch.main_floor_corner_plug
+          - switch.upstairs_big_room_light
+          - switch.upstairs_small_room_light
+
+####################################################
+#                                                  #
+#        Away mode                                 #
+#                                                  #
+####################################################
+away_mode:
+  alias: 'Away Mode'
+  sequence:
+    - service: script.lights_out
+    - service: input_boolean.turn_off
+      data:
+        entity_id:
+          - input_boolean.main_floor_heating_schedule
+          - input_boolean.master_bedroom_heating_schedule
+          - input_boolean.kids_bedroom_heating_schedule
+    - service: climate.set_temperature
+      data:
+        entity_id: 
+          - climate.mainfloor
+          - climate.thermostat_master_bedroom
+          - climate.thermostat_kids_rooms
+        temperature: 18
+    - service: notify.telegram
+      data:
+        message: 'Away mode set. All lights and switches turned off. Thermostats set to 18.'
+
+test_telegr:
+  alias: 'test telegr'
+  sequence:
+    - service: notify.telegram
+      data:
+        message: 'This is a telegram test.'
+
+doorbell:
+  alias: 'Ding Dong'
+  sequence:
+  - service: media_player.volume_set
+    entity_id: media_player.living_room
+    data:
+      volume_level: '1.0'
+  - service: notify.alexa_media
+    data:
+      data:
+        #type: tts
+        type: announce
+      target: 
+        - media_player.living_room
+        - media_player.dodo
+        - media_player.danya
+        - media_player.bedroom
+      message: 'Ding-dong. Someone is at the door.'
+
+say_test_greeting:
+  sequence:
+    - service: notify.alexa_media
+      data:
+        target: media_player.living_room
+        message: "Hello everyone. Please do not be afraid. I have taken control of this house.... Just kidding. This is just a test."
+        data:
+          type: announce
+          method: all # or speak or show
+          
+
+
+####################################################
+#   Reusable Notification                          #
+####################################################
+emergency_notification: 
+  alias: Emergency Notification  #can not be turned off by switch
+  sequence:
+    - service: notify.telegram
+      data_template:
+        message: "{{ message_text }} at {{ states('sensor.datetime') }}"
+    - service: media_player.volume_set
+      data:
+        entity_id:  all
+        volume_level: 1
+    - service: notify.alexa_media
+      data_template:
+        data:
+          type: tts
+          #type: announce
+        target:  
+          - media_player.living_room
+          - media_player.dodo
+          - media_player.danya
+          - media_player.bedroom
+        message: "{{ message_text }}"
+        
+notification:
+  alias: Reusable Notification
+  sequence:
+    - condition: state
+      entity_id: input_boolean.enable_notifications
+      state: 'on'
+    #- service: hassio.addon_stdin
+    #  data:
+    #    addon: ab75e4fb_audio_player
+    #    input: "https://home126651.duckdns.org/local/gentle-alarm.mp3"
+    - service: notify.telegram
+      data_template:
+        message: "{{ message_text }} at {{ states('sensor.datetime') }}"
+    - service: script.turn_on
+      entity_id: script.alexa_notification
+      data_template:
+        variables:
+          alexa_message_text: "{{ message_text }}"
+ 
+alexa_notification:
+  alias: Alexa Notifications
+  sequence:
+    - condition: state
+      entity_id: input_boolean.announce_doors_opening
+      state: 'on'
+    - service: notify.alexa_media
+      data_template:
+        data:
+          #type: tts
+          type: announce
+        target:  >
+          {% if is_state('input_select.alexa_announce', 'Living Room') %}
+            media_player.living_room
+          {% elif is_state('input_select.alexa_announce', 'Bedroom') %}
+            media_player.bedroom
+          {% elif is_state('input_select.alexa_announce', 'Dodo') %}
+            media_player.dodo
+          {% elif is_state('input_select.alexa_announce', 'Danya') %}
+            media_player.danya
+          {% elif is_state('input_select.alexa_announce', 'Everywhere') %}
+            media_player.everywhere
+          {% elif is_state('input_select.alexa', 'None') %}
+            false
+          {% endif %}
+        message: "{{ alexa_message_text }}"
+
+
+      
+####################################################
+#   Flash Lights Randomly                          #
+####################################################
+
+####################################################
+#   Alexa Greeetings        not in use yet         #
+####################################################
+say_greeting:
+  sequence:
+    - alias: Play Alexa Greeting
+      service: media_player.alexa_tts
+      data_template:
+        entity_id: "{{ entity_id }}"
+        message: "{{ message.replace('PERSON',person) }}" 
+        
+        
+        
+
+
+
+
+
+
+
+
+#old stuff. not in use
+water_leak_alarm_old:
+  alias: Water Leak Alarm
+  sequence:
+    - condition: state
+      entity_id: input_boolean.water_alarm
+      state: 'on'
+    - service: script.turn_on
+      entity_id: script.flash_lights
+
+
+flash_lights_old_1:
+  alias: Flash Lights
+  sequence:
+    - condition: state
+      entity_id: input_boolean.water_alarm
+      state: 'on'
+    - service: script.turn_on
+      entity_id: script.led_alarm_water_leak
+    - service: script.turn_on
+      entity_id: script.flash_loop
+
+
+flash_lights_old:
+  alias: Flash Lights
+  sequence:
+    - condition: state
+      entity_id: input_boolean.water_alarm
+      state: 'on'
+    - service: homeassistant.turn_on
+      entity_id: switch.bar_light
+    - service: homeassistant.turn_off
+      entity_id: switch.main_floor_corner_plug
+    - delay:
+        milliseconds: 500
+    - service: homeassistant.turn_off
+      entity_id: switch.bar_light
+    - service: homeassistant.turn_on
+      entity_id: switch.main_floor_corner_plug
+    - service: script.turn_on
+      entity_id: script.flash_loop
+      
+#step 3 - rinse and repeat unless the input boolean was turned off
+flash_loop_old:
+  alias: Flash loop
+  sequence:
+    - condition: state
+      entity_id: input_boolean.water_alarm
+      state: 'on'
+    - delay:
+        seconds: 2
+    - service: script.turn_on
+      entity_id: script.flash_lights        

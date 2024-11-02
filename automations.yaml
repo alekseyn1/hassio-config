@@ -1,0 +1,2073 @@
+#- id: send_a_notification_if_cafe_offline
+#  alias: Send a notification if cafe router is offline
+#  mode: single
+#  initial_state: 'on'
+#  trigger:
+#    - platform: state
+#      entity_id:
+#        - binary_sensor.archer
+#      from: 'on'
+#      to: 'off'
+#    - platform: time_pattern
+#      seconds: '/10'
+#  condition:
+#    - condition: state
+#      entity_id: binary_sensor.archer
+#      state: 'off'
+#  action:
+#    service: notify.telegram
+#    data:
+#      message: "Router in cafe is offline!"
+
+#- id: send_a_notification_if_cafe_online
+#  alias: Send a notification if cafe router is online
+#  mode: single
+#  initial_state: 'on'
+#  trigger:
+#    - platform: state
+#      entity_id:
+#        - binary_sensor.archer
+#      from: 'off'
+#      to: 'on'
+#    #- platform: time_pattern
+#    #  seconds: '/10'
+#  condition:
+#    - condition: state
+#      entity_id: binary_sensor.archer
+#      state: 'on'
+#  action:
+#    service: notify.telegram
+#    data:
+#      message: "Router in cafe is online again!"
+
+- id: wled_reset_all_to_solid
+  alias: WLED reset all to solid
+  initial_state: true
+  trigger:
+    - platform: state
+      entity_id: input_boolean.wled_reset_all_to_solid
+      from: 'off'
+      to: 'on'
+  action:
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: A=100&SX=200&IX=128&CL=Hffff00&C2=0&C3=H0&FP=0&FX=00
+
+- id: wled_set_all_to_alarm
+  alias: WLED set all to alarm
+  initial_state: true
+  trigger:
+    - platform: state
+      entity_id: input_boolean.wled_set_all_to_alarm
+      from: 'off'
+      to: 'on'
+  action:
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: A=255&SX=200&IX=128&CL=H0000ff&C2=Hff0000&C3=Hffffff&FP=0&FX=25
+        
+- id: wled_reboot
+  alias: WLED reboot
+  initial_state: true
+  trigger:
+    - platform: state
+      entity_id: input_boolean.wled_reboot
+      from: 'off'
+      to: 'on'
+  action:
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: RB
+        
+        
+- id: testing_humidity
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.laundry_closet_humidity_sensor #Sonoff humidity sensor modified - https://sonoff.tech/product/wifi-diy-smart-switches/th10-th16
+      above: 98
+  action:
+    service: notify.telegram
+    data:
+      message: "Humidity Sensor above 98"
+
+#Email kids' schools about their absense
+- id: email_schools_absense
+  alias: "Email kids' schools about their absense"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.email_school
+      from: 'off'
+      to: 'on'
+  action:
+    - service: script.email_1
+      data_template:
+        sender_name_1: "{{ states.input_text.email_from_name.state }}"
+        to_text_1: "{{ states.input_text.email_to_1.state }}"
+        subject_text_1: "{{ states.input_text.email_subject_1.state }}"
+        message_text_1: "{{ states.input_text.email_body_1.state }}"
+    - service: script.email_2
+      data_template:
+        sender_name_2: "{{ states.input_text.email_from_name.state }}"
+        to_text_2: "{{ states.input_text.email_to_2.state }}"
+        subject_text_2: "{{ states.input_text.email_subject_2.state }}"
+        message_text_2: "{{ states.input_text.email_body_2.state }}"
+    - service: input_boolean.turn_off
+      entity_id: input_boolean.email_school
+
+        
+#######################################################################
+#  Notify if doors open for more than 5 minutes                       #
+#######################################################################
+- id: detect_if_doors_open_for_long
+  alias: Detect if doors open for more than 5 minutes
+  mode: single
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.front_door
+        - binary_sensor.back_door
+      from: 'off'
+      to: 'on'
+      for:
+        minutes: 5
+  action:
+    - service: input_text.set_value
+      data_template:
+        entity_id: input_text.last_door_open_long
+        value: '{{ trigger.to_state.attributes.friendly_name }}'  
+
+- id: notify_if_doors_open_for_long
+  alias: Notify if doors open for more than 5 minutes
+  mode: single
+  initial_state: 'on'
+  trigger:
+    - platform: time_pattern
+      seconds: '/30' #check every 30 seconds
+  condition:
+    condition: or
+    conditions:
+      - condition: and
+        conditions:
+          - condition: state
+            entity_id: binary_sensor.front_door
+            state: 'on'
+          - condition: template
+            value_template: '{{ ((as_timestamp(now()) - as_timestamp(states.binary_sensor.front_door.last_changed) | default(0)) | int) > 300 }}' #300= 5 minutes
+          - condition: state
+            entity_id: input_boolean.notify_about_doors_ajar
+            state: 'on'
+      - condition: and
+        conditions:
+          - condition: state
+            entity_id: binary_sensor.back_door
+            state: 'on'
+          - condition: template
+            value_template: '{{ ((as_timestamp(now()) - as_timestamp(states.binary_sensor.back_door.last_changed) | default(0)) | int) > 300 }}' #300= 5 minutes
+          - condition: state
+            entity_id: input_boolean.notify_about_doors_ajar
+            state: 'on'
+  action:
+    - service: counter.increment
+      target:
+        entity_id: counter.notifications
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.alexa_announce
+      data:
+        option: Everywhere        
+    - service: script.notification
+      data_template:
+        message_text: "Warning, the {{ states.input_text.last_door_open_long.state }} has been left open for more than 5 minutes. Please close."
+
+- id: reset_counter_on_doors_close
+  alias: Reset Notification Counter on Doors Closed
+  mode: single
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.front_door
+        - binary_sensor.back_door        
+      from: 'on'
+      to: 'off'
+  condition:
+    and:
+      - condition: state
+        entity_id: binary_sensor.front_door
+        state: 'off'
+      - condition: state
+        entity_id: binary_sensor.back_door
+        state: 'off'
+  action:
+    - service: counter.reset
+      target:
+        entity_id: counter.notifications
+    - service: homeassistant.turn_off
+      entity_id: input_boolean.announce_doors_opening
+    - service: input_select.select_option
+      target:
+        entity_id: input_select.alexa_announce
+      data:
+        option: Living Room
+
+
+
+- id: alarm_on_counter_more_than_5
+  alias: Notification on Counter more than 5
+  mode: single
+  initial_state: 'on'
+  trigger:
+    - platform: numeric_state
+      entity_id:
+        - counter.notifications
+      above: 5
+  condition:
+    or:
+      - condition: state
+        entity_id: binary_sensor.front_door
+        state: 'on'
+      - condition: state
+        entity_id: binary_sensor.back_door
+        state: 'on'
+  action:
+    - service: homeassistant.turn_on
+      entity_id: input_boolean.announce_doors_opening
+    - service: script.notification
+      data_template:
+        message_text: "Warning, the {{ states.input_text.last_door_open_long.state }} has been left open for more than 5 minutes. Please close."
+        
+#############################################################
+#                           Christmas tree lights        #
+#############################################################
+
+- alias: Christmas Lights Effects
+  mode: single
+  trigger:
+  - platform: time_pattern
+    seconds: '10'
+  condition:
+  - condition: state
+    entity_id: 
+      - light.wled
+      - light.wled2
+      #- light.wled3
+      - light.wled4
+    state: 'on'
+  variables:
+    effects:
+      - Colorloop
+      - Dancing Shadows
+      - Glitter
+      - Colortwinkles
+  action:
+  - service: light.turn_on
+    data:
+      effect: "{{ effects | random }}"
+    entity_id: 
+      - light.wled
+      - light.wled2
+      #- light.wled3
+      - light.wled4
+
+#------------------------------------------------------------------
+- id: christmas_lights_on_after_dark
+  alias: "Turn on Christmas Lights after dark"
+  trigger:
+    - platform: sun
+      event: sunset
+      offset: "-00:05:00"
+  condition:
+    condition: and
+    conditions:
+      - condition: template # Only between December 1 and January 6.
+        value_template: >
+           {% set n = now() %}
+           {{ n.month == 12 or ( n.month == 1 and ( 1 <= n.day <= 5 )) }}
+      - condition: state
+        entity_id: input_boolean.christmas_schedule
+        state: 'on'
+  action:
+    - service: homeassistant.turn_on
+      entity_id: 
+        - switch.christmas_lights
+        - switch.front_door_outside_plug
+        - light.wled
+
+- id: christmas_lights_off_after_sunrise
+  alias: "Turn off Christmas Lights after sunrise"
+  trigger:
+    - platform: sun
+      event: sunrise
+      offset: "00:05:00"
+  condition:
+    condition: and
+    conditions:
+      - condition: template # Only between December 1 and January 6.
+        value_template: >
+           {% set n = now() %}
+           {{ n.month == 12 or ( n.month == 1 and ( 1 <= n.day <= 5 )) }}
+      - condition: state
+        entity_id: input_boolean.christmas_schedule
+        state: 'on'
+  action:
+    - service: homeassistant.turn_off
+      entity_id: 
+        - switch.christmas_lights
+        - switch.front_door_outside_plug
+        - light.wled
+        
+#############################################################
+#   Ozone Generator                                         #
+#############################################################
+- id: ozone_generator_automation
+  alias: "Turn off ozone generator after 24 minutes"
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: switch.ozone_generator
+      from: 'off'
+      to: 'on'
+  action:
+    - service: homeassistant.turn_on
+      entity_id: 
+        - switch.garage_fan_1
+    - service: script.start_ozone_generator
+    - delay: '00:24:00' 
+    - service: homeassistant.turn_off #this is just in case. A 23 minute shutoff was programmed into the switch. 1380 seconds = 23 minutes. Tasmota command 'pulsetime 1380'
+      entity_id: switch.ozone_generator
+    - delay: '00:30:00' #to keep the ozone in the closed room and let it work.
+    - service: script.vent_after_ozone_generator
+    - service: homeassistant.turn_off
+      entity_id: 
+        - input_boolean.ozone_generator
+        - switch.garage_fan_1
+    - service: script.notification
+      data_template:
+        message_text: "Ozone Generator has finished the cycle."
+
+- id: run_ozone_3am
+  alias: "Run Ozone at 3am"
+  trigger:
+    - platform: time
+      at: '03:00:00'
+  condition:
+  - condition: state
+    entity_id: input_boolean.run_ozone_3
+    state: 'on'
+  action:
+    - service: homeassistant.turn_on
+      entity_id: switch.ozone_generator
+        
+- id: run_ozone_5am
+  alias: "Run Ozone at 5am"
+  trigger:
+    - platform: time
+      at: '05:00:00'
+  condition:
+  - condition: state
+    entity_id: input_boolean.run_ozone_5
+    state: 'on'
+  action:
+    - service: homeassistant.turn_on
+      entity_id: switch.ozone_generator     
+
+- id: stop_ozone_on_motion
+  alias: "Stop Ozone if anyone in garage"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.motion_sensor_garage
+      to: 'on'
+    - platform: time
+      at: '07:00:00'
+    - platform: time
+      at: '12:00:00'
+  action:
+    - service: homeassistant.turn_off
+      entity_id: 
+        - switch.ozone_generator
+
+#############################################################
+#   If Water Leak Sensor triggered, turn on alarm           #
+#############################################################
+
+- id: turn_on_switch_if_water_leak_detected
+  alias: Turn on switch if water leak_detected
+  initial_state: 'on'
+  #if one of the watersensors detects a leak, the whole group would be ON
+  trigger:
+    - platform: state
+      entity_id: # water sensors - https://github.com/alekseyn1/WaterSensor
+        - binary_sensor.water_sensor_master_bathroom
+        - binary_sensor.water_sensor_kids_bathroom
+        - binary_sensor.water_sensor_downstairs_bathroom
+        - binary_sensor.water_sensor_dishwasher
+      from: 'off'
+      to: 'on'
+    - platform: numeric_state
+      entity_id: sensor.laundry_closet_humidity_sensor #Sonoff humidity sensor modified - https://sonoff.tech/product/wifi-diy-smart-switches/th10-th16
+      above: 98
+      for:
+        seconds: 15 #sensor is glitchy, therefore this compensation
+  action:
+      #save the last water leak detected  
+    - service: input_text.set_value
+      data_template:
+        entity_id: input_text.last_water_leak
+        value: '{{ trigger.to_state.attributes.friendly_name }}'
+    - service: input_boolean.turn_on
+      data:
+        entity_id: input_boolean.water_alarm  
+    #close the water valve in the garage and washing machine in the laundry closet
+    - service: homeassistant.turn_off
+      entity_id: 
+        - switch.main_water_valve
+        - switch.laundry_closet
+    #open the relief valve to drain water from pipes
+    - delay: 00:00:05
+    - service: homeassistant.turn_on
+      entity_id: 
+        - switch.main_water_relief_valve
+     #run the relief valve for 5 minutes and then close it
+    - delay: 00:05:00
+    - service: homeassistant.turn_off
+      entity_id: switch.main_water_relief_valve
+
+- id: turn_on_leak_automation_if_off_for_testing
+  alias: Turn on Leak Detection Automation if it was off
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: automation.turn_on_switch_if_water_leak_detected
+      from: 'on'
+      to: 'off'
+  action:
+    - delay: 01:00:00
+    - service: automation.turn_on
+      entity_id: automation.turn_on_switch_if_water_leak_detected
+      
+#######################################################################
+#  Run LED, Sound and Telegram Water Leak Alarms until disabled       #
+#######################################################################
+- id: if_alarm_is_not_aknowledged_run_notices
+  alias: If alarm is not aknowledged run notices
+  mode: single #https://www.home-assistant.io/blog/2020/07/22/release-113/
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: input_boolean.water_alarm
+      from: 'off'
+      to: 'on'
+    #check for status every that many seconds
+    - platform: time_pattern
+      seconds: '/10'
+  condition:
+    - condition: state
+      entity_id: input_boolean.water_alarm
+      state: 'on'
+  action:
+    - service: script.turn_on
+      entity_id: script.led_alarm_water_leak
+    - service: script.emergency_notification
+      data_template:
+        message_text: "WATER LEAK DETECTED on {{ states.input_text.last_water_leak.state }}! Shutting off Main Water Valve in the Garage."
+
+- id: if_alarm_IS_aknowledged_run_notices
+  alias: If alarm IS aknowledged restore things to normal
+  mode: single #https://www.home-assistant.io/blog/2020/07/22/release-113/
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: input_boolean.water_alarm
+      from: 'on'
+      to: 'off'
+  action:
+    - service: script.emergency_notification
+      data_template:
+        message_text: "Water Leak Alarm off. Restoring alarm lights to normal. Water valve has to be open separately."
+    - service: mqtt.publish
+      data:
+        topic: wled/all/api      
+        payload: A=100&SX=200&IX=128&CL=Hffff00&C2=0&C3=H0&FP=0&FX=00
+    - service: scene.turn_on
+      data:
+        entity_id: scene.before_wled_test
+
+###################################################################################
+#  When the water alarm gets triggered, the washing maching turns off             #
+#  When Water valve is open again, turn on Washing machine in the laundry closet  #
+#  Then close the relief valve (just in case)                                     #
+###################################################################################
+
+- id: water_valve_on_washing_machine_on
+  alias: Water valve opens turn on washing machine in the laundry closet
+  mode: single #https://www.home-assistant.io/blog/2020/07/22/release-113/
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: switch.main_water_valve
+      from: 'off'
+      to: 'on'
+  condition:
+    - condition: state
+      entity_id: input_boolean.water_alarm
+      state: 'off'
+  action:
+    - service: homeassistant.turn_on
+      entity_id: 
+        - switch.laundry_closet
+    - service: homeassistant.turn_off
+      entity_id: switch.main_water_relief_valve
+
+
+- id: run_water_valve_maintenance
+  alias: "Run Water Valve Maintenance"
+  trigger:
+    - platform: time
+      at: '03:00:00'
+  condition:
+    - condition: time
+      weekday:
+        - mon
+        #- tue
+        #- wed
+        #- thu
+        #- fri
+  action:
+    - service: homeassistant.turn_off
+      entity_id: switch.main_water_valve
+    - delay: 00:00:10
+    - service: homeassistant.turn_on
+      entity_id: switch.main_water_valve      
+      
+####################################################
+#                                                  #
+#                General Household Improvements    #
+#                                                  #
+####################################################
+
+# Example automation using snapshot - https://www.home-assistant.io/integrations/scene/#creating-scenes-on-the-fly
+- alias: Window opened
+  trigger:
+  - platform: state
+    entity_id: binary_sensor.window
+    from: 'off'
+    to: 'on'
+  condition: []
+  action:
+  - service: scene.create
+    data:
+      scene_id: before
+      snapshot_entities:
+      - climate.ecobee
+      - light.ceiling_lights
+  - service: light.turn_off
+    data:
+      entity_id: light.ceiling_lights
+  - service: climate.set_hvac_mode
+    data:
+      entity_id: climate.ecobee
+      hvac_mode: 'off'
+- alias: Window closed
+  trigger:
+  - platform: state
+    entity_id: binary_sensor.window
+    from: 'on'
+    to: 'off'
+  condition: []
+  action:
+  - service: scene.turn_on
+    data:
+      entity_id: scene.before
+
+
+
+#------------ Turn off all lights and switches (excluding essential ones) -------------------------
+- id: away_mode
+  alias: "Away Mode"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.away
+      from: 'off'
+      to: 'on'
+  action:
+    - service: script.turn_on
+      entity_id: script.away_mode
+
+#------------ Turn on all lights and switches that control lights -------------------------
+- id: turn_all_lights_on
+  alias: "Turn all lights on"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.all_lights_on
+      from: 'off'
+      to: 'on'
+  action:
+    - service: script.turn_on
+      entity_id: script.lights_on
+      
+#------------ Turn off all kids computers -------------------------      
+- id: launch_kids_computers_off_routine
+  alias: "Turn off kids computers"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.kids_bedtime
+      from: 'off'
+      to: 'on'
+  action:
+    - service: script.turn_on
+      entity_id: script.bedtime_kids
+
+#------------ Turn on LEDs in kids rooms and announce via Alexas -------------------------
+- id: launch_kids_get_attention
+  alias: "Get kids attention"
+  trigger:
+    - platform: state
+      entity_id: input_boolean.kids_attention
+      from: 'off'
+      to: 'on'
+  action:
+    - service: script.turn_on
+      entity_id: script.call_kids
+      
+#---------remove as not needed for frontend---------------------------
+#- id: dining_room_slider
+#  alias: Dining Room Light Slider
+#  initial_state: 'on'
+#  trigger:
+#    platform: state
+#    entity_id: input_number.dr_dimmer
+#  action:
+#    - service: "mqtt.publish"
+#      data_template:
+#        topic: "cmnd/sonoff-dn-dining/Dimmer"
+#        retain: "true"
+#        payload: '{{states("input_number.dr_dimmer") | round(0)}}'
+#        
+#---------remove as not needed for frontend---------------------------
+#- id: gr_slider
+#  alias: Dining Room Light On On slider
+#  initial_state: 'on'
+#  trigger:
+#    platform: state
+#    entity_id: input_number.dr_dimmer
+#  condition:
+#  - condition: state
+#    entity_id: light.dining_room
+#    state: 'off'
+#  action:
+#    - service: homeassistant.turn_on
+#      entity_id: light.dining_room
+#      
+
+#  condition:
+#    condition: or
+#    conditions:
+#      - condition: sun
+#        before: sunrise
+#        before_offset: "+00:15:00"
+#      - condition: sun
+#        after: sunset
+#        after_offset: "-00:15:00"
+
+####################################################
+#                                                  #
+#                Motion Sensors                    #
+#                                                  #
+####################################################
+
+
+- id: send_a_screenshot_of_motion_front
+  alias: Send a screenshot if motion detected front door
+  mode: single
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.front_door_motion
+      from: 'off'
+      to: 'on'
+  action:
+    service: notify.telegram
+    data:
+      message: "Motion at the front door"
+      data:
+        photo:
+          - url: http://192.168.1.210:81/image/front_door.jpg
+            caption: Front Door Motion Detected
+
+- id: send_a_screenshot_of_motion_back
+  alias: Send a screenshot if motion detected back door
+  mode: single
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.back_door_motion
+      from: 'off'
+      to: 'on'
+  action:
+    service: notify.telegram
+    data:
+      message: "Motion at the back door"
+      data:
+        photo:
+          - url: http://192.168.1.210:81/image/back_door.jpg
+            caption: Back Door Motion Detected
+
+- id: send_a_screenshot_of_motion_garage
+  alias: Send a screenshot if motion detected garage door
+  mode: single
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.garage_door_motion
+      from: 'off'
+      to: 'on'
+  action:
+    service: notify.telegram
+    data:
+      message: "Motion at the Garage Entrance"
+      data:
+        photo:
+          - url: http://192.168.1.210:81/image/garage_front.jpg
+            caption: Garage Door Motion Detected
+            
+#------------ Motion Sesor Kitchen -------------------------
+- alias: Motion Sensor Kitchen Lights On
+  trigger:
+    platform: state
+    entity_id: binary_sensor.motion_sensor_kitchen
+    from: 'off'
+    to: 'on'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: sun.sun
+        state: 'below_horizon'
+      - condition: state
+        entity_id: input_boolean.motion_sensor_kitchen
+        state: 'on'
+      - condition: state
+        entity_id: light.kitchen_light
+        state: 'off'
+  action:
+    - service: homeassistant.turn_on
+      data:
+        entity_id: 
+          - light.kitchen_light
+        brightness: 10
+
+- alias: Motion Sensor Lights Kitchen Off
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.motion_sensor_kitchen
+      from: 'on'
+      to: 'off'
+      for:
+        minutes: 5
+  action:
+    - service: homeassistant.turn_off
+      data:
+        entity_id: 
+          - light.kitchen_light
+        #transition: 60
+        
+#------------ Motion Sesor Dining Room -------------------------      
+- alias: Motion Sensor Dining room Lights On
+  trigger:
+    platform: state
+    entity_id:  binary_sensor.motion_sensor_livingroom
+    from: 'off'
+    to: 'on'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: sun.sun
+        state: 'below_horizon'
+      - condition: state
+        entity_id: input_boolean.motion_sensor_dining
+        state: 'on'
+      - condition: state
+        entity_id: light.dining_room
+        state: 'off'
+  action:
+    - service: homeassistant.turn_on
+      data:
+        entity_id: 
+          - light.dining_room
+        brightness: 10
+        #transition: 60
+
+- alias: Motion Sensor Dining room Lights Off
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.motion_sensor_kitchen
+      from: 'on'
+      to: 'off'
+      for:
+        minutes: 5
+  condition:
+    - condition: state
+      entity_id: input_boolean.dinner
+      state: 'off'  
+  action:
+    - service: homeassistant.turn_off
+      data:
+        entity_id: 
+          - light.dining_room
+
+- alias: Living Room Lights Brightness Reset
+  trigger:
+    platform: state
+    entity_id: sun.sun
+    to: 'above_horizon'
+  action:
+    - service: light.turn_on
+      entity_id:
+        - light.dining_room
+        - light.kitchen_light
+      data:
+        brightness: 255
+    - delay: 00:00:03
+    - service: homeassistant.turn_off
+      data:
+        entity_id: 
+          - light.dining_room
+          - light.kitchen_light
+
+#------------ Motion Sesor Garage Stairs -------------------------      
+- alias: Start timer to turn off garage stairs lights
+  trigger: 
+    - platform: state
+      entity_id: binary_sensor.motion_garage_stairs
+      from: 'off'
+      to: 'on'
+    - platform: state
+      entity_id: binary_sensor.garage_hallway_door
+      from: 'off'
+      to: 'on'
+    - platform: state
+      entity_id: binary_sensor.front_door
+      from: 'off'
+      to: 'on'
+    - platform: state
+      entity_id: group.garage_stairs
+      from: 'off'
+      to: 'on'       
+  action: 
+    - service: timer.start
+      entity_id: timer.time_remaining_garage_stairs 
+
+- alias: Turn off garage stairs lights on timer finished
+  trigger:
+    platform: event
+    event_type: timer.finished
+    event_data:
+      entity_id: timer.time_remaining_garage_stairs
+  condition:
+    - condition: state
+      entity_id: input_boolean.motion_sensor_garage_stairs
+      state: 'on'
+  action:
+    - service: homeassistant.turn_off
+      entity_id: switch.garage_stairs_top
+
+- alias: Motion Sensor Garage Stairs Lights On
+  trigger:
+    platform: state
+    #entity_id: binary_sensor.neo_eye_sensor
+    entity_id: binary_sensor.motion_garage_stairs
+    from: 'off'
+    to: 'on'
+  condition:
+    condition: or 
+    conditions:
+      - condition: sun
+        after: sunset
+        after_offset: "-00:59:00"
+      - condition: sun
+        before: sunrise
+#  condition:
+#    condition: and
+#    conditions: 
+#      - condition: state
+#        entity_id: sun.sun
+#        state: 'below_horizon'
+#      - condition: state
+#        entity_id: switch.garage_stairs
+ #       state: 'off'
+  action:
+    - service: homeassistant.turn_on
+      data:
+        entity_id: 
+          - group.garage_stairs
+          - switch.ozone_generator
+
+# #this light gets turned on a lot manually from kitchen. Therefore stays on. This automation will fix that.
+# - alias: Motion Sensor Garage Stairs Off
+  # trigger:
+    # - platform: time_pattern #check for status every 60 seconds
+      # seconds: '/59'
+  # condition:
+    # condition: and
+    # conditions:
+      # - condition: state
+        # entity_id: binary_sensor.motion_garage_stairs
+        # state: 'off'
+        # for:
+          # minutes: 3
+      # - condition: template #if the time passed from the last sensor state is less than the last value in seconds, i.e. 180 = 3 minutes
+        # value_template: '{{ ((as_timestamp(now()) - as_timestamp(states.binary_sensor.garage_hallway_door.last_changed) | default(0)) | int) > 180 }}'
+  # action:
+    # - service: homeassistant.turn_off
+      # data:
+        # entity_id: 
+          # - group.garage_stairs
+
+
+- alias: Motion Sensor Upstairs Hallway Lights On
+  mode: single
+  trigger:
+    platform: state
+    entity_id: binary_sensor.motion_upstairs_hallway
+    from: 'off'
+    to: 'on'
+  action:
+  #set brightness to full, speed to half, intensity to half, primary color as blue, secondary as red, tertiary as white, set pallet to default, effect to strobe mega but keep it off
+  - service: mqtt.publish
+    data:
+      topic: wled/wled-big-room/api      
+      #payload: A=255&SX=200&IX=128&CL=H0000ff&C2=Hff0000&C3=Hffffff&FP=0&FX=25
+      payload: A=255&SX=200&IX=128&CL=Hffffff&C2=HFDF500&C3=Hffffff&FP=0&FX=25
+  - delay: 00:00:02
+  - service: mqtt.publish
+    data:
+      topic: wled/wled-big-room/api      
+      payload: A=100&SX=200&IX=128&CL=Hffff00&C2=0&C3=H0&FP=0&FX=00
+  - service: homeassistant.turn_off
+    entity_id: light.wled_big_room
+  #- delay: 00:01:00
+
+#------------------- Motion Sensor Inside Garage ------------------
+- alias: Garage Light Motion Turn On
+  mode: single
+  initial_state: 'on'
+  trigger:
+    platform: state
+    entity_id: binary_sensor.motion_sensor_garage
+    from: 'off'
+    to: 'on'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: switch.garage_lights
+        state: 'off'
+      - condition: state
+        entity_id: input_boolean.motion_sensor_garage
+        state: 'on'
+  action:
+    - service: homeassistant.turn_on
+      data:
+        entity_id: 
+          - switch.garage_lights
+          
+- alias: Garage Light Motion Turn On extraction fan
+  mode: single
+  initial_state: 'on'
+  trigger:
+    platform: state
+    entity_id: binary_sensor.motion_sensor_garage
+    from: 'off'
+    to: 'on'
+  condition:
+    - condition: template
+      value_template: '{{ ((as_timestamp(now()) - as_timestamp(states.switch.garage_extraction_fan.last_changed) | default(0)) | int) > 1200 }}' #1200= 20 minutes
+    - condition: state
+      entity_id: input_boolean.motion_sensor_garage_extraction_fan
+      state: 'on'
+  action:
+    - service: homeassistant.turn_on
+      data:
+        entity_id: 
+          - switch.garage_extraction_fan
+          
+          
+- id: garage_lighs_motion_off
+  trigger:
+    #check for status every 60 seconds
+    - platform: time_pattern
+      seconds: '/59'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: binary_sensor.motion_sensor_garage
+        state: 'off'
+        for:
+          minutes: 10
+      - condition: state
+        entity_id: input_boolean.motion_sensor_garage
+        state: 'on'  
+  action:
+    - service: homeassistant.turn_off
+      data:
+        entity_id: 
+          - switch.garage_lights
+
+#------------------------------------------------------------------
+- id: garage_stairs_on_if_entered_front_door_after_dark
+  alias: "Turn on Garage stairs if front door or garage hallway door opens after dark"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.front_door
+      from: 'off'
+      to: 'on'
+    - platform: state
+      entity_id: binary_sensor.garage_hallway_door
+      from: 'off'
+      to: 'on'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: sun.sun
+        state: 'below_horizon'
+      - condition: state
+        entity_id: switch.garage_stairs_top
+        state: 'off'
+  action:
+    - service: homeassistant.turn_on
+      entity_id: switch.garage_stairs_top
+#    - delay: 00:05:00
+#    - service: homeassistant.turn_off
+#      entity_id: group.garage_stairs
+
+#------------------------------------------------------------------
+- id: dining_lights_on_if_entered_after_dark
+  alias: "Turn on Dining Room Lights if back door opens after dark"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.back_door
+      from: 'off'
+      to: 'on'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: sun.sun
+        state: 'below_horizon'
+      - condition: state
+        entity_id: light.dining_room
+        state: 'off'
+  action:
+    - service: light.turn_on
+      data:
+        entity_id: light.dining_room
+        #---max value is 255
+        brightness: 10
+    #- service: homeassistant.turn_on
+    #  entity_id: light.dining_room
+    - delay: 00:05:00
+    - service: homeassistant.turn_off
+      entity_id: light.dining_room
+      
+#binary_sensor.pir_motion_sensor_2_home_security_motion_detection
+#------------------------------------------------------------------
+- id: stairs_led_lights_on_if_motion_after_dark
+  alias: "Turn on Bedroom Stairs LED if motion detected after dark"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.pir_motion_sensor_2_home_security_motion_detection
+      from: 'off'
+      to: 'on'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: sun.sun
+        state: 'below_horizon'
+      - condition: state
+        entity_id: light.wled_bedroom_stairs
+        state: 'off'
+  action:
+    - service: light.turn_on
+      data:
+        entity_id: light.wled_bedroom_stairs
+        #---max value is 255
+        brightness: 10
+    #- service: homeassistant.turn_on
+    #  entity_id: light.dining_room
+    - delay: 00:05:00
+    - service: homeassistant.turn_off
+      entity_id: light.wled_bedroom_stairs
+      
+      
+#------------------------------------------------------------------
+- id: tv_off_hall_light_on_for_5_min
+  alias: "Hall light on for 5 min if TV turned off after dark"
+  trigger:
+    - platform: state
+      entity_id: switch.tv
+      from: 'on'
+      to: 'off'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: sun.sun
+        state: 'below_horizon'
+      - condition: state
+        entity_id: switch.main_floor_corner_plug
+        state: 'off'
+  action:
+    - service: homeassistant.turn_on
+      entity_id: switch.main_floor_corner_plug
+    - delay: 00:05:00
+    - service: homeassistant.turn_off
+      entity_id: switch.main_floor_corner_plug
+      
+#------------------------------------------------------------------
+# Turn all lights off unless there is a party going on
+# https://community.home-assistant.io/t/switch-everything-off-except-excluded-entities/80343
+
+- id: actions_at_the_end_of_work_day
+  alias: "Actions at the end of work day - 6 pm"
+  trigger:
+    - platform: time
+      at: '18:00:00'
+  action:
+    - service: input_select.select_option
+      data:
+        entity_id: input_select.alexa_announce
+        option: 'Living Room'
+    - service: homeassistant.turn_off
+      entity_id: input_boolean.announce_doors_opening
+      
+      
+- id: lights_out_at_2_30_am
+  alias: "Lights Out at 2.30 am"
+  trigger:
+    - platform: time
+      at: '02:30:00'
+  condition:
+  - condition: state
+    entity_id: input_boolean.party_mode
+    state: 'off'
+  action:
+    - service: script.lights_out
+    - delay: 00:00:10
+    - service: homeassistant.turn_on
+      entity_id:
+        #this one is on timer (relay in the wall), so will turn off in 20 minutes
+        - switch.garage_extraction_fan
+        #this will re-enable notifications if they were off
+        - input_boolean.notify_about_doors_ajar
+
+- id: garage_close_at_2_30_am
+  alias: "Force Garage Close at 2.30 am"
+  trigger:
+    - platform: time
+      at: '02:30:00'
+  condition:
+    - condition: state
+      entity_id: input_boolean.party_mode
+      state: 'off'
+  action:
+    - service: input_boolean.turn_off
+      entity_id: input_boolean.do_not_close_garage
+
+- id: garage_close_at_3_30_am
+  alias: "Force Garage Close at 3.30 am"
+  trigger:
+    - platform: time
+      at: '03:30:00'
+  action:
+    - service: input_boolean.turn_off
+      entity_id: input_boolean.do_not_close_garage
+    - service: input_boolean.turn_on
+      entity_id: input_boolean.motion_sensor_garage
+    - service: input_boolean.turn_on
+      entity_id: input_boolean.motion_sensor_garage_stairs
+      
+
+####################################################
+#                                                  #
+#                3 way switches automation         #
+#                                                  #
+####################################################
+
+#- alias: Garage Stairs On
+#  initial_state: 'on'
+#  trigger:
+#    platform: state
+#    entity_id: group.garage_stairs
+#    to: 'on'
+#  action:
+#    service: homeassistant.turn_on
+#    entity_id: group.garage_stairs
+
+#- alias: Garage Stairs Off
+#  initial_state: 'on'
+#  trigger:
+#    - platform: state
+#      entity_id: switch.garage_stairs
+#      to: 'off'
+#    - platform: state
+#      entity_id: switch.garage_stairs_down
+#      to: 'off'
+#  action:
+#    service: homeassistant.turn_off
+#    entity_id: group.garage_stairs
+    
+#----------------------------------------------------------
+- alias: Bedroom Stairs On
+  initial_state: 'on'
+  trigger:
+    platform: state
+    entity_id: group.bedroom_stairs
+    to: 'on'
+  action:
+    service: homeassistant.turn_on
+    entity_id: group.bedroom_stairs
+
+- alias: Bedroom Stairs Off
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: light.bedroom_stairs
+      to: 'off'
+    - platform: state
+      entity_id: switch.bedroom_stairs_down
+      to: 'off'
+  action:
+    service: homeassistant.turn_off
+    entity_id: group.bedroom_stairs
+    
+#----------------------------------------------------------
+- alias: Upstairs Hallway Light On
+  initial_state: 'on'
+  trigger:
+    platform: state
+    entity_id: group.up_hallway
+    to: 'on'
+  action:
+    service: homeassistant.turn_on
+    entity_id: group.up_hallway
+
+- alias: Upstairs Hallway Light Off
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: light.upstairs_hallway_light
+      to: 'off'
+    - platform: state
+      entity_id: switch.upstairs_hallway_light_secondary
+      to: 'off'
+  action:
+    service: homeassistant.turn_off
+    entity_id: group.up_hallway
+    
+####################################################
+#                                                  #
+#                Notifications                     #
+#                                                  #
+####################################################
+      
+####################################################
+#                  Update Available                #
+####################################################
+- id: Update_Notify
+  alias: Update Available Notification
+  trigger:
+    - platform: state
+      entity_id: update.home_assistant_core_update
+      from: 'off'
+      to: 'on'
+  action:
+    - service: notify.telegram
+      data_template:
+        message: "Home Assistant {{ state_attr('update.home_assistant_core_update', 'latest_version') }} is available. Release summary: {{ state_attr('update.home_assistant_core_update', 'release_summary') }} Release notes: {{ state_attr('update.home_assistant_core_update', 'release_url') }}"
+        
+        
+      
+####################################################
+#                  Bad Logins                      #
+####################################################
+
+- id: bad_logins
+  alias: Login Failure
+  initial_state: 'on'
+  trigger:
+    - platform: template
+      value_template: "{{ states('persistent_notification.httplogin') != 'authentication' }}"
+  action:
+   service: notify.telegram
+   data:
+     message: 'Bad Login.. There was a Hack attempt! Go Check the GUI for details.'
+
+####################################################
+#                  Hass Start/Stop                 #
+####################################################
+
+- id: hass_start
+  alias: Home Assistant Start - Notify
+  initial_state: 'on'
+  trigger:
+    - platform: homeassistant
+      event: start
+  action:
+    service: notify.telegram
+    data:
+      message: "Home Assistant Started at {{ states('sensor.datetime') }}"
+
+- id: hass_stop
+  alias: Home Assistant Stop - Notify
+  initial_state: 'on'
+  trigger:
+    - platform: homeassistant
+      event: shutdown
+  action:
+    service: notify.telegram
+    data:
+      message: "Home Assistant Stopped at {{ states('sensor.datetime') }}"
+
+
+
+
+
+
+####################################################
+#                  Zone                            #
+#              Notifications                       #
+####################################################
+####################################################
+#                   Dad  Presense Detection        #
+####################################################
+
+- id: dad_out
+  alias: Dad Not Home
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: group.location_dad
+      from: 'home'
+      to: 'not_home'
+      for:
+        seconds: 59
+  action:
+    - service: script.notification
+      data:
+        message_text: 'Dad left home'
+     
+- id: dad_home
+  alias: Dad at Home
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: group.location_dad
+      from: 'not_home'
+      to: 'home'
+      for:
+        seconds: 59
+  action:
+    - service: script.notification
+      data:
+        message_text: 'Dad came home'
+        
+        
+####################################################
+#                   Mom  Presense Detection        #
+####################################################
+
+- id: mom_out
+  alias: Mamma Not Home
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: group.location_mom
+      from: 'home'
+      to: 'not_home'
+  action:
+    - service: script.notification
+      data:
+        message_text: 'Mom left home'
+     
+- id: mom_home
+  alias: Mamma at Home
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: group.location_mom
+      from: 'not_home'
+      to: 'home'
+  action:
+    - service: script.notification
+      data:
+        message_text: 'Mom came home'
+        
+     
+####################################################
+#                   Daniel  Home                      #
+####################################################
+- id: danil_out
+  alias: Daniel Not Home
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: group.location_Daniel
+      from: 'home'
+      to: 'not_home'
+  action:
+    - service: script.notification
+      data:
+        message_text: 'Daniel left home'
+        
+- id: daniel_home
+  alias: Daniel at Home - Notification
+  initial_state: 'on'
+  trigger:
+    - platform: state
+      entity_id: group.location_daniel
+      from: 'not_home'
+      to: 'home'
+  action:
+    - service: script.notification
+      data:
+        message_text: 'Daniel came Home'
+     
+
+####################################################
+#                   Family Greeting                #
+####################################################
+- id: family_greeting
+  alias: Family Greeting
+  trigger:
+    platform: state
+    entity_id:
+      - binary_sensor.mom_home
+      - binary_sensor.dad_home
+      - binary_sensor.danya_home
+    from: 'off'
+    to: 'on'
+    for: '00:00:15'
+  action:
+    - wait_template: "{{ is_state('script.say_greeting', 'off') }}"
+    - service: script.say_greeting
+      data_template:
+        entity_id:
+          #- "media_player.living_room,media_player.bedroom"
+          - media_player.living_room
+        person: >
+          {{ trigger.to_state.name }}
+          {%- for s in states.binary_sensor
+                |rejectattr('entity_id','eq',trigger.entity_id)
+                |selectattr('state','eq','on')
+                if '_home' in s.entity_id and
+                   (now() - s.last_changed).total_seconds() < 60 -%}
+            {{ (' and ' if loop.last else ', ') ~ s.name }}
+          {%- endfor %}
+        message: >
+          {{ ["Welcome back home PERSON",
+              "Guess who is home? PERSON is!",
+              "PERSON is now in the house.",
+              "Welcome Home PERSON.  We have missed you Or at least I did.",
+              "Attention Everybody! PERSON is home I repeat, PERSON is home. Welcome home PERSON",
+              "Our home is now complete, Rest your head and relax your feet, Welcome Back PERSON",
+              "Life is like a song, you’re back where you belong, Welcome home PERSON",
+              "Hey there PERSON! Welcome Home!",
+              "Knock Knock. Who is There? PERSON is!",
+              "PERSON, you are home!",
+              "I know a secret. PERSON is home!",
+              "PERSON it's nice to see you again. Right where you belong. Welcome home PERSON",
+              "O M G it's PERSON. Oh how I missed your face. Welcome home",
+              "Oh Goodie PERSON is home. Welcome back",
+              "When PERSON is here we are complete. Its nice to see you PERSON",
+              "Its not the same when PERSON isn't here, so welcome home"
+             ] | random }}     
+
+
+
+
+             
+
+
+    
+
+
+    
+####################################################
+#                                                  #
+#                Doors and Garage Related          #
+#                                                  #
+####################################################
+##########################################
+## Garage Door Automations              ##
+##########################################
+- id: open_garage_when_he_arrives
+  alias: Garage Door For Dad when he gets home
+  initial_state: 'on'
+  trigger:
+  - platform: state
+    entity_id: group.location_dad
+    from: not_home
+    to: home 
+  condition:
+  #if settings switch is on
+  - condition: state
+    entity_id: input_boolean.open_garage_for_arrival
+    state: 'on'
+  #AND if the garage sensor shows as CLOSED
+  - condition: state
+    entity_id: binary_sensor.garage_door_sensor
+    state: 'off'
+  action:
+  - service: switch.turn_on
+    entity_id: switch.garage_door_button
+  - service: script.notification
+    data:
+        message_text: 'Dad is home. Opening Garage door.'
+    
+####################################################
+#                   Garage Open                    #
+####################################################
+
+#- id: garage_door_toggle
+#  alias: Garage Opened
+#  trigger:
+#    - platform: state
+#      entity_id: switch.garage_door
+#      to: 'on'
+#  action:
+#   service: notify.telegram
+#   data:
+#     message: "Garage Doors moving at {{ states('sensor.datetime') }}"
+
+#- id: garage_fan_on
+#  alias: Garage Extraction Fan
+#  trigger:
+#    - platform: state
+#      entity_id: switch.extraction_fan
+#      to: 'on'
+#  action:
+#   service: notify.telegram
+#   data:
+#     message: "Garage fan started on {{ states('sensor.') }}"
+     
+- id: garage_open_notification
+  alias: Garage Open Notification
+  initial_state: 'on'
+  trigger:
+    platform: state
+    entity_id: binary_sensor.garage_door_sensor
+    to: 'on'
+    for:
+      seconds: 1    #eliminate reed switch rattling
+  action:
+  - service: script.notification
+    data:
+      message_text: "Garage Open"
+  - service: timer.start
+    entity_id: timer.time_remaining_garage
+  - service: switch.turn_on
+    entity_id: 
+      - switch.garage_fan_1
+      - switch.garage_fan_2
+      - switch.heavy_duty_extension
+      - switch.garage_lights
+
+- id: garage_closed_notification
+  alias: Garage Closed Notification
+  initial_state: 'on'
+  trigger:
+    platform: state
+    entity_id: binary_sensor.garage_door_sensor
+    from: 'on'
+    to: 'off'
+    for:
+      seconds: 1    #eliminate reed switch rattling
+  action:
+  - service: script.notification
+    data:
+      message_text: "Garage Closed"
+  - service: timer.finish
+    entity_id: timer.time_remaining_garage
+    #in case someone forgot to turn on garage closing
+  - service: input_boolean.turn_off
+    entity_id: input_boolean.do_not_close_garage
+  - delay: 00:00:30 
+  - service: switch.turn_off
+    entity_id: 
+      - switch.garage_fan_1
+      - switch.garage_fan_2
+      - switch.heavy_duty_extension
+      - switch.box_fan
+        
+- id: Close_Garage_If_Open
+  alias: Close garage door if open for longer than 30 minutes
+  initial_state: 'on'
+  trigger:
+    #check for status every minute
+    - platform: time_pattern
+      minutes: '/1'
+  condition:
+    #if Do not close the garage switch is off
+    - condition: state
+      entity_id: input_boolean.do_not_close_garage
+      state: 'off'
+    #AND if the reed sensor shows that the door is open
+    - condition: state
+      entity_id: binary_sensor.garage_door_sensor
+      state: 'on'
+    #if the time passed from the last sensor state is less than the last value in seconds, i.e. 1800 = 30 minutes
+    - condition: template
+      value_template: '{{ ((as_timestamp(now()) - as_timestamp(states.binary_sensor.garage_door_sensor.last_changed) | default(0)) | int) > 1800 }}'
+  action:
+    - service: notify.telegram
+      data:
+        message: "Garage Door was left open for {{ relative_time(states.binary_sensor.garage_door_sensor.last_changed) }}. Closing now. ({{ states('sensor.datetime') }})"
+    - service: switch.turn_on
+      entity_id: switch.garage_door_button
+
+
+####################################################
+#                   Doors                          #
+####################################################
+
+- id: front-door-notification
+  alias: Front Door Notification
+  initial_state: 'on'
+  trigger:
+    platform: state
+    entity_id: binary_sensor.front_door
+    to: 'on'
+  action:
+    - service: script.notification
+      data:
+        message_text: "Front Door Open"
+        
+- id: back-door-notification
+  alias: Back Door Notification
+  initial_state: 'on'
+  trigger:
+    platform: state
+    entity_id: binary_sensor.back_door
+    to: 'on'
+  action:
+    - service: script.notification
+      data:
+        message_text: "Back Door Open"
+
+####################################################
+#                   Media                          #
+####################################################
+
+- alias: Alexa TTS
+  trigger:
+    platform: state
+    entity_id: input_select.alexa
+  action:
+    - service: media_player.volume_set
+      data_template:
+        entity_id: >
+          {% if is_state('input_select.alexa', 'Living Room') %}
+            media_player.living_room
+          {% elif is_state('input_select.alexa', 'Bedroom') %}
+            media_player.bedroom
+          {% elif is_state('input_select.alexa', 'Dodo') %}
+            media_player.dodo
+          {% elif is_state('input_select.alexa', 'Danya') %}
+            media_player.danya
+          {% elif is_state('input_select.alexa', 'Everywhere') %}
+            media_player.everywhere
+          {% elif is_state('input_select.alexa', 'None') %}
+            false
+          {% endif %}
+        volume_level: 0.5
+    - service: notify.alexa_media
+      data_template:
+        data:
+          #type: tts
+          type: announce
+        target:  >
+          {% if is_state('input_select.alexa', 'Living Room') %}
+            media_player.living_room
+          {% elif is_state('input_select.alexa', 'Bedroom') %}
+            media_player.bedroom
+          {% elif is_state('input_select.alexa', 'Dodo') %}
+            media_player.dodo
+          {% elif is_state('input_select.alexa', 'Danya') %}
+            media_player.danya
+          {% elif is_state('input_select.alexa', 'Everywhere') %}
+            media_player.everywhere
+          {% elif is_state('input_select.alexa', 'None') %}
+            false
+          {% endif %}
+        message: "{{  states.input_text.alexa_tts.state }}"
+    - delay: '00:00:02'
+    - service: input_select.select_option
+      data:
+        entity_id: input_select.alexa
+        option: None
+        
+        
+####################################################
+#                                                  #
+#        Thermostats                               #
+#                                                  #
+####################################################
+
+#------------Main Floor heating ----------------------------
+- id: main_floor_thermostat_shedule_morning
+  alias: "Main Floor thermostat day routine"
+  trigger:
+    - platform: time
+      at: '04:45:00'
+    - platform: time
+      at: '07:30:00'
+    - platform: time
+      at: '14:30:00'
+    - platform: time
+      at: '18:30:00'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: input_boolean.main_floor_heating_schedule
+        state: 'on'
+  action:
+    - service: climate.set_temperature
+      data_template:
+        entity_id: climate.mainfloor
+        temperature: "{{ states('input_number.main_floor_climate_max') | int }}"
+    - delay: 01:00:00
+    - service: climate.set_temperature
+      data_template:
+        entity_id: climate.mainfloor
+        temperature: "{{ states('input_number.main_floor_climate_min') | int }}"
+        
+#------------Main Floor Night reduce heating ----------------------------------------
+- id: main_floor_thermostat_shedule_night
+  alias: "Main Floor thermostat night routine"
+  trigger:
+    platform: time
+    at: '01:00:00'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: input_boolean.main_floor_heating_schedule
+        state: 'on'
+  action:
+    - service: climate.set_temperature
+      data_template:
+        entity_id: climate.mainfloor
+        temperature: "{{ states('input_number.main_floor_climate_min') | int }}"
+
+
+
+
+
+#------------Master Bedroom heating ----------------------------
+- id: master_bedroom_thermostat_shedule_morning
+  alias: "Control Master Bedroom thermostat based on date and time - morning"
+  trigger:
+    - platform: time
+      at: '04:45:00'
+    #- platform: time
+    #  at: '14:30:00'
+    - platform: time
+      at: '21:00:00'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: input_boolean.master_bedroom_heating_schedule
+        state: 'on'
+  action:
+    - service: climate.set_temperature
+      data_template:
+        entity_id: climate.thermostat_master_bedroom
+        temperature: "{{ states('input_number.master_bedroom_climate_max') | int }}"
+    - delay: 01:30:00
+    - service: climate.set_temperature
+      data_template:
+        entity_id:  climate.thermostat_master_bedroom
+        temperature: "{{ states('input_number.master_bedroom_climate_min') | int }}"
+        
+#------------Master Bedroom Night reduce heating ----------------------------------------
+- id: master_bedroom_thermostat_shedule_night
+  alias: "Control Master Bedroom thermostat based on date and time - night"
+  trigger:
+    platform: time
+    at: '01:00:00'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: input_boolean.master_bedroom_heating_schedule
+        state: 'on'
+  action:
+    - service: climate.set_temperature
+      data_template:
+        entity_id:  climate.thermostat_master_bedroom
+        temperature: "{{ states('input_number.master_bedroom_climate_min') | int }}"
+        
+
+
+
+#------------Kids Bedroom heating ----------------------------
+- id: kids_bedroom_thermostat_shedule_morning
+  alias: "Control Kids Bedroom thermostat based on date and time - morning"
+  trigger:
+    - platform: time
+      at: '07:00:00'
+    - platform: time
+      at: '15:00:00'
+    - platform: time
+      at: '20:00:00'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: input_boolean.kids_bedroom_heating_schedule
+        state: 'on'
+  action:
+    - service: climate.set_temperature
+      data_template:
+        entity_id:  climate.thermostat_kids_rooms
+        temperature: "{{ states('input_number.kids_bedroom_climate_max') | int }}"
+    - delay: 01:30:00
+    - service: climate.set_temperature
+      data_template:
+        entity_id:  climate.thermostat_kids_rooms
+        temperature: "{{ states('input_number.kids_bedroom_climate_min') | int }}"
+        
+#-----------Kids Bedroom Night reduce heating ----------------------------------------
+- id: kids_bedroom_thermostat_shedule_night
+  alias: "Control Kids Bedroom thermostat based on date and time - night"
+  trigger:
+    platform: time
+    at: '01:00:00'
+  condition:
+    condition: and
+    conditions: 
+      - condition: state
+        entity_id: input_boolean.kids_bedroom_heating_schedule
+        state: 'on'
+  action:
+    - service: climate.set_temperature
+      data_template:
+        entity_id:  climate.thermostat_kids_rooms
+        temperature: "{{ states('input_number.kids_bedroom_climate_min') | int }}"
+
+
+######################################################################
+#        Matrix
+######################################################################
+
+- id: set_effect_parameters
+  alias: set_effect_parameters
+  initial_state: true
+  trigger:
+    - platform: state
+      entity_id: input_select.show_effects_settings
+  action:
+    - service: mqtt.publish
+      data_template:
+        topic: led_matrix_bedroom/cmd
+        payload_template: >
+          {% if states('input_select.show_effects_settings') == "Clock" %}
+          $8 0 0;
+          {% elif states('input_select.show_effects_settings') == "Lamp" %}
+          $8 0 1;
+          {% elif states('input_select.show_effects_settings') == "Snow" %}
+          $8 0 2;
+          {% elif states('input_select.show_effects_settings') == "Cube" %}
+          $8 0 3;
+          {% elif states('input_select.show_effects_settings') == "Rainbow" %}
+          $8 0 4;
+          {% elif states('input_select.show_effects_settings') == "Paintball" %}
+          $8 0 5;
+          {% elif states('input_select.show_effects_settings') == "Fire" %}
+          $8 0 6;
+          {% elif states('input_select.show_effects_settings') == "The Matrix" %}
+          $8 0 7;
+          {% elif states('input_select.show_effects_settings') == "Circles" %}
+          $8 0 8;
+          {% elif states('input_select.show_effects_settings') == "Stars" %}
+          $8 0 9;
+          {% elif states('input_select.show_effects_settings') == "Confetti" %}
+          $8 0 10;
+          {% elif states('input_select.show_effects_settings') == "Color Noise" %}
+          $8 0 11;
+          {% elif states('input_select.show_effects_settings') == "Clouds" %}
+          $8 0 12;
+          {% elif states('input_select.show_effects_settings') == "Lava" %}
+          $8 0 13;
+          {% elif states('input_select.show_effects_settings') == "Plazma" %}
+          $8 0 14;
+          {% elif states('input_select.show_effects_settings') == "Color Waves" %}
+          $8 0 15;
+          {% elif states('input_select.show_effects_settings') == "Striped Waves" %}
+          $8 0 16;
+          {% elif states('input_select.show_effects_settings') == "Zebra" %}
+          $8 0 17;
+          {% elif states('input_select.show_effects_settings') == "Noisy Forest" %}
+          $8 0 18;
+          {% elif states('input_select.show_effects_settings') == "Sea" %}
+          $8 0 19;
+          {% elif states('input_select.show_effects_settings') == "Color Change" %}
+          $8 0 20;
+          {% elif states('input_select.show_effects_settings') == "Fireflies" %}
+          $8 0 21;
+          {% elif states('input_select.show_effects_settings') == "Maelstrom" %}
+          $8 0 22;
+          {% elif states('input_select.show_effects_settings') == "Cyclone" %}
+          $8 0 23;
+          {% elif states('input_select.show_effects_settings') == "Blink" %}
+          $8 0 24;
+          {% elif states('input_select.show_effects_settings') == "Aurora" %}
+          $8 0 25;
+          {% elif states('input_select.show_effects_settings') == "Shadows" %}
+          $8 0 26;
+          {% elif states('input_select.show_effects_settings') == "Labyrinth" %}
+          $8 0 27;
+          {% elif states('input_select.show_effects_settings') == "Snake" %}
+          $8 0 28;
+          {% elif states('input_select.show_effects_settings') == "Tetris" %}
+          $8 0 29;
+          {% elif states('input_select.show_effects_settings') == "Arkanoid" %}
+          $8 0 30;
+          {% elif states('input_select.show_effects_settings') == "Pallet" %}
+          $8 0 31;
+          {% elif states('input_select.show_effects_settings') == "Spectrum" %}
+          $8 0 32;
+          {% elif states('input_select.show_effects_settings') == "Sine Waves" %}
+          $8 0 33;
+          {% elif states('input_select.show_effects_settings') == "Patterns" %}
+          $8 0 34;
+          {% elif states('input_select.show_effects_settings') == "Rain" %}
+          $8 0 35;
+          {% elif states('input_select.show_effects_settings') == "Fireplace" %}
+          $8 0 36;
+          {% elif states('input_select.show_effects_settings') == "Waterfall" %}
+          $8 0 37;
+          {% elif states('input_select.show_effects_settings') == "Arrows" %}
+          $8 0 38;
+          {% elif states('input_select.show_effects_settings') == "Animation" %}
+          $8 0 39;
+          {% elif states('input_select.show_effects_settings') == "Weather" %}
+          $8 0 40;
+          {% elif states('input_select.show_effects_settings') == "Life" %}
+          $8 0 41;
+          {% elif states('input_select.show_effects_settings') == "Patterns 2" %}
+          $8 0 42;
+          {% elif states('input_select.show_effects_settings') == "Sunrise" %}
+          $8 0 43;
+          {% else %}
+          {% endif %}
+            
+- id: set_matrix_BR
+  alias: set_matrix_BR
+  initial_state: true
+  trigger:
+    platform: state
+    entity_id: input_number.matrix_brightness
+  action:
+    - service: mqtt.publish
+      data_template:
+        topic: led_matrix_bedroom/cmd
+        payload_template: "$4 0 {{ states('input_number.matrix_brightness') | int }};"
+
+- id: set_matrix_PW          
+  alias: set_matrix_PW
+  initial_state: true
+  trigger:
+    platform: state
+    entity_id: input_number.matrix_current_limit
+  action:
+    - service: mqtt.publish
+      data_template:
+        topic: led_matrix_bedroom/cmd
+        payload_template: "$23 0 {{ states('input_number.matrix_current_limit') | int }};"
+
+- alias: set_matrix_mode_speed
+  initial_state: true
+  trigger:
+    - platform: state
+      entity_id: input_number.matrix_mode_speed
+  condition:
+    - condition: template
+      value_template: "{{ states('input_number.matrix_mode_number') != '-1.0' }}"
+    - condition: template
+      value_template: "{{ states('input_boolean.matrix_mode_speed_visibility') == 'on' }}"
+  action:
+    - service: mqtt.publish
+      data_template:
+        topic: WiFiPanel-0/cmd
+        payload_template: >
+          $15 {{ states('input_number.matrix_mode_speed')|int }} 0;
+            
+- id: set_matrix_off         
+  alias: set_matrix_off
+  initial_state: true
+  trigger:
+    platform: state
+    entity_id: input_boolean.bedroom_matrix
+    from: 'on'
+    to: 'off'
+  action:
+    - service: mqtt.publish
+      data_template:
+        topic: led_matrix_bedroom/cmd
+        payload_template: "$1 0;"
+ 
+- id: set_matrix_on         
+  alias: set_matrix_on
+  initial_state: true
+  trigger:
+    platform: state
+    entity_id: input_boolean.bedroom_matrix
+    from: 'off'
+    to: 'on'
+  action:
+    - service: mqtt.publish
+      data_template:
+        topic: led_matrix_bedroom/cmd
+        payload_template: "$1 1;"
+        
+        
+####################################################
+#                                                  #
+#                Themes Management                 #
+#                                                  #
+####################################################
+
+#- alias: Home Assistant Set Theme At Startup
+#  initial_state: true
+#  trigger:
+#  - platform: homeassistant
+#    event: start
+#  - platform: state
+#    entity_id: sun.sun
+#    to: above_horizon
+#  - platform: state
+#    entity_id: sun.sun
+#    to: below_horizon
+#  action:
+#    service: frontend.set_theme
+#    data_template:
+#      name: >
+#        {% if states.sun.sun.state == "above_horizon" %}
+#          default
+#        {% else %}
+#          slate
+#        {% endif %}
